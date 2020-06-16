@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 
 	"github.com/gcash/bchd/btcjson"
 	"github.com/gcash/bchd/chaincfg/chainhash"
@@ -68,6 +69,7 @@ func (r FutureGetBlockResult) Receive() (*wire.MsgBlock, error) {
 	var blockHex string
 	err = json.Unmarshal(res, &blockHex)
 	if err != nil {
+		fmt.Println("failed to unmarshal block hex", res)
 		return nil, err
 	}
 

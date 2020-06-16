@@ -142,8 +142,7 @@ func TestChainSvrCmds(t *testing.T) {
 		{
 			name: "getblock",
 			newCmd: func() (interface{}, error) {
-				verbosePtr := btcjson.Int(0)
-				return btcjson.NewCmd("getblock", "123", &verbosePtr)
+				return btcjson.NewCmd("getblock", "123", btcjson.Int(0))
 			},
 			staticCmd: func() interface{} {
 				return btcjson.NewGetBlockCmd("123", btcjson.Int(0))
