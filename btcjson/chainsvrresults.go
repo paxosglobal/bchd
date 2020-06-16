@@ -48,13 +48,14 @@ type GetBlockBaseVerboseResult struct {
 type GetBlockVerboseResult struct {
 	*GetBlockBaseVerboseResult
 	Tx []string `json:"tx,omitempty"`
+	RawTx         []TxRawResult `json:"rawtx,omitempty"` // Note: this field is always empty when verbose != 2.
 }
 
 // GetBlockVerboseTxResult models the data from the getblock command when the
 // verbose flag is set to 2.
 type GetBlockVerboseTxResult struct {
 	*GetBlockBaseVerboseResult
-	Tx []TxRawResult `json:"tx,omitempty"`
+	Tx []TxRawResult `json:"tx,omitempty"` // Note: this field is always empty when verbose != 2.
 }
 
 // AddMultisigAddressResult models the data returned from the addmultisigaddress
