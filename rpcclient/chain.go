@@ -69,7 +69,7 @@ func (r FutureGetBlockResult) Receive() (*wire.MsgBlock, error) {
 	var blockHex string
 	err = json.Unmarshal(res, &blockHex)
 	if err != nil {
-		fmt.Println("failed to unmarshal block hex", res)
+		fmt.Println("failed to unmarshal block hex", hex.EncodeToString(res))
 		return nil, err
 	}
 
