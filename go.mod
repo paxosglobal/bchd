@@ -12,7 +12,7 @@ require (
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
 	github.com/gcash/bchlog v0.0.0-20180913005452-b4f036f92fa6
 	github.com/gcash/bchutil v0.0.0-20200229035400-71699f7db55e
-	github.com/golang/protobuf v1.3.4
+	github.com/golang/protobuf v1.3.2
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/improbable-eng/grpc-web v0.12.0
 	github.com/jessevdk/go-flags v0.0.0-20181221193153-c0795c8afcf4
