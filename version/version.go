@@ -17,8 +17,8 @@ const semanticAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqr
 // versioning 2.0.0 spec (http://semver.org/).
 const (
 	AppMajor uint = 0
-	AppMinor uint = 16
-	AppPatch uint = 3
+	AppMinor uint = 17
+	AppPatch uint = 0
 
 	// AppPreRelease MUST only contain characters from semanticAlphabet
 	// per the semantic versioning spec.
@@ -63,7 +63,11 @@ func String() string {
 
 // Numeric returns the application version as an integer.
 func Numeric() int32 {
-	return int32(2 ^ AppMajor*3 ^ AppMinor*5 ^ AppPatch)
+	major := AppMajor * 1000000
+	minor := AppMinor * 10000
+	patch := AppPatch * 100
+
+	return int32(major + minor + patch)
 }
 
 // normalizeVerString returns the passed string stripped of all characters which

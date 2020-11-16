@@ -75,3 +75,19 @@ func String(v string) *string {
 	*p = v
 	return p
 }
+
+// Verbositylevel is a helper routine that allocates a new VerbosityLevel value to
+// store v and returns a pointer to it. This is useful when assigning optional parameters.
+func Verbositylevel(v VerbosityLevel) *VerbosityLevel {
+	p := new(VerbosityLevel)
+	*p = v
+	return p
+}
+
+// Verboselevel is a helper routine that allocates a new VerbosityLevel value to
+// store v and returns a pointer to it. This is useful when assigning optional parameters.
+func Verboselevel(v VerboseLevel) *VerboseLevel {
+	p := new(VerboseLevel)
+	*p = v
+	return p
+}

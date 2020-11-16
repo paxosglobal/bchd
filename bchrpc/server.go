@@ -315,7 +315,7 @@ func (s *GrpcServer) checkReady() bool {
 	return atomic.LoadUint32(&s.ready) != 0
 }
 
-// GetMempoolInfo returns info about the mempool.
+// GetMempoolInfo returns the state of the current mempool.
 func (s *GrpcServer) GetMempoolInfo(ctx context.Context, req *pb.GetMempoolInfoRequest) (*pb.GetMempoolInfoResponse, error) {
 	nBytes := uint32(0)
 	for _, txDesc := range s.txMemPool.TxDescs() {
@@ -400,7 +400,7 @@ func (s *GrpcServer) GetBlockchainInfo(ctx context.Context, req *pb.GetBlockchai
 	return resp, nil
 }
 
-// GetBlockInfo returns info about the given block.
+// GetBlockInfo returns metadata and info for a specified block.
 func (s *GrpcServer) GetBlockInfo(ctx context.Context, req *pb.GetBlockInfoRequest) (*pb.GetBlockInfoResponse, error) {
 	var (
 		block *bchutil.Block
@@ -437,7 +437,7 @@ func (s *GrpcServer) GetBlockInfo(ctx context.Context, req *pb.GetBlockInfoReque
 	return resp, nil
 }
 
-// GetBlock returns a full block.
+// GetBlock returns detailed data for a block.
 func (s *GrpcServer) GetBlock(ctx context.Context, req *pb.GetBlockRequest) (*pb.GetBlockResponse, error) {
 	var (
 		block *bchutil.Block
@@ -516,7 +516,7 @@ func (s *GrpcServer) GetBlock(ctx context.Context, req *pb.GetBlockRequest) (*pb
 	return resp, nil
 }
 
-// GetRawBlock returns a full serialized block.
+// GetRawBlock returns a block in a serialized format.
 func (s *GrpcServer) GetRawBlock(ctx context.Context, req *pb.GetRawBlockRequest) (*pb.GetRawBlockResponse, error) {
 	var (
 		block *bchutil.Block
@@ -545,7 +545,7 @@ func (s *GrpcServer) GetRawBlock(ctx context.Context, req *pb.GetRawBlockRequest
 	return resp, nil
 }
 
-// GetBlockFilter returns a block filter.
+// GetBlockFilter returns the compact filter (cf) of a block as a Golomb-Rice encoded set.
 //
 // **Requires CfIndex**
 func (s *GrpcServer) GetBlockFilter(ctx context.Context, req *pb.GetBlockFilterRequest) (*pb.GetBlockFilterResponse, error) {
@@ -579,11 +579,12 @@ func (s *GrpcServer) GetBlockFilter(ctx context.Context, req *pb.GetBlockFilterR
 	return resp, nil
 }
 
-// GetHeaders sends a block locator object to the server and the server responds with
-// a batch of no more than 2000 headers. Upon parsing the block locator, if the server
-// concludes there has been a fork, it will send headers starting at the fork point,
-// or genesis if no blocks in the locator are in the best chain. If the locator is
-// already at the tip no headers will be returned.
+// GetHeaders takes a block locator object and returns a batch of no more than 2000
+// headers. Upon parsing the block locator, if the server concludes there has been a
+// fork, it will send headers starting at the fork point, or genesis if no blocks in
+// the locator are in the best chain. If the locator is already at the tip no headers
+// will be returned.
+// see: bchd/bchrpc/documentation/wallet_operation.md
 func (s *GrpcServer) GetHeaders(ctx context.Context, req *pb.GetHeadersRequest) (*pb.GetHeadersResponse, error) {
 	var (
 		locator blockchain.BlockLocator
@@ -616,6 +617,7 @@ func (s *GrpcServer) GetHeaders(ctx context.Context, req *pb.GetHeadersRequest) 
 			return nil, status.Error(codes.Internal, "error loading start header height")
 		}
 	}
+	bestHeight := s.chain.BestSnapshot().Height
 	for i, header := range headers {
 		hash := header.BlockHash()
 		resp.Headers = append(resp.Headers, &pb.BlockInfo{
@@ -628,7 +630,7 @@ func (s *GrpcServer) GetHeaders(ctx context.Context, req *pb.GetHeadersRequest) 
 			Nonce:         header.Nonce,
 			Bits:          header.Bits,
 			PreviousBlock: header.PrevBlock.CloneBytes(),
-			Confirmations: s.chain.BestSnapshot().Height - (startHeight + int32(i)) + 1,
+			Confirmations: bestHeight - (startHeight + int32(i)) + 1,
 		})
 	}
 
@@ -690,7 +692,8 @@ func (s *GrpcServer) GetTransaction(ctx context.Context, req *pb.GetTransactionR
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to load block header")
 	}
-	respTx := marshalTransaction(bchutil.NewTx(&msgTx), s.chain.BestSnapshot().Height-blockHeight, &header, blockHeight, s.chainParams)
+
+	respTx := marshalTransaction(bchutil.NewTx(&msgTx), s.chain.BestSnapshot().Height-blockHeight+1, &header, blockHeight, s.chainParams)
 	if s.txIndex != nil {
 		if err := s.setInputMetadata(respTx); err != nil {
 			return nil, err
@@ -704,7 +707,7 @@ func (s *GrpcServer) GetTransaction(ctx context.Context, req *pb.GetTransactionR
 	return resp, nil
 }
 
-// GetRawTransaction returns a serialized transaction given its hash.
+// GetRawTransaction returns a serialized transaction given a transaction hash.
 //
 // **Requires TxIndex**
 func (s *GrpcServer) GetRawTransaction(ctx context.Context, req *pb.GetRawTransactionRequest) (*pb.GetRawTransactionResponse, error) {
@@ -879,8 +882,8 @@ func (s *GrpcServer) GetRawAddressTransactions(ctx context.Context, req *pb.GetR
 	return resp, nil
 }
 
-// GetAddressUnspentOutputs returns all the unspent transaction outpoints for the given address.
-// Offers offset, limit, and from block options.
+// GetAddressUnspentOutputs returns all the unspent transaction outputs
+// for the given address.
 //
 // **Requires AddressIndex**
 func (s *GrpcServer) GetAddressUnspentOutputs(ctx context.Context, req *pb.GetAddressUnspentOutputsRequest) (*pb.GetAddressUnspentOutputsResponse, error) {
@@ -986,7 +989,8 @@ func (s *GrpcServer) GetAddressUnspentOutputs(ctx context.Context, req *pb.GetAd
 	return resp, nil
 }
 
-// GetUnspentOutput looks up the unspent output in the utxo set and returns the utxo metadata or not found.
+// GetUnspentOutput takes an unspent output in the utxo set and returns
+// the utxo metadata or not found.
 func (s *GrpcServer) GetUnspentOutput(ctx context.Context, req *pb.GetUnspentOutputRequest) (*pb.GetUnspentOutputResponse, error) {
 	txnHash, err := chainhash.NewHash(req.Hash)
 	if err != nil {
@@ -1050,7 +1054,8 @@ func (s *GrpcServer) GetUnspentOutput(ctx context.Context, req *pb.GetUnspentOut
 	return ret, nil
 }
 
-// GetMerkleProof returns a merkle (SPV) proof that the given transaction is in the provided block.
+// GetMerkleProof returns a Merkle (SPV) proof for a specific transaction
+// in the provided block.
 //
 // **Requires TxIndex***
 func (s *GrpcServer) GetMerkleProof(ctx context.Context, req *pb.GetMerkleProofRequest) (*pb.GetMerkleProofResponse, error) {
@@ -1166,13 +1171,12 @@ func (s *GrpcServer) SubmitTransaction(ctx context.Context, req *pb.SubmitTransa
 	return resp, nil
 }
 
-// SubscribeTransactions subscribes to relevant transactions based on the
-// subscription requests. The parameters to filter transactions on can be
-// updated by sending new SubscribeTransactionsRequest objects on the stream.
+// SubscribeTransactions creates subscription to all relevant transactions based on
+// the subscription filter.
 //
-// This RPC does not use bi-directional streams and therefore can be used
-// with grpc-web. You will need to close and re-open the stream whenever
-// you want to update the addresses. If you are not using grpc-web
+// This RPC does not use bidirectional streams and therefore can be used
+// with grpc-web. You will need to close and reopen the stream whenever
+// you want to update the subscription filter. If you are not using grpc-web
 // then SubscribeTransactionStream is more appropriate.
 //
 // **Requires TxIndex to receive input metadata**
@@ -1266,7 +1270,7 @@ func (s *GrpcServer) SubscribeTransactions(req *pb.SubscribeTransactionsRequest,
 					} else {
 						header := block.MsgBlock().Header
 
-						respTx := marshalTransaction(tx, s.chain.BestSnapshot().Height-block.Height(), &header, block.Height(), s.chainParams)
+						respTx := marshalTransaction(tx, s.chain.BestSnapshot().Height-block.Height()+1, &header, block.Height(), s.chainParams)
 						if s.txIndex != nil {
 							if err := s.setInputMetadata(respTx); err != nil {
 								return err
@@ -1414,7 +1418,7 @@ func (s *GrpcServer) SubscribeTransactionStream(stream pb.Bchrpc_SubscribeTransa
 					} else {
 						header := block.MsgBlock().Header
 
-						respTx := marshalTransaction(tx, s.chain.BestSnapshot().Height-block.Height(), &header, block.Height(), s.chainParams)
+						respTx := marshalTransaction(tx, s.chain.BestSnapshot().Height-block.Height()+1, &header, block.Height(), s.chainParams)
 						if s.txIndex != nil {
 							if err := s.setInputMetadata(respTx); err != nil {
 								return err
@@ -1437,8 +1441,8 @@ func (s *GrpcServer) SubscribeTransactionStream(stream pb.Bchrpc_SubscribeTransa
 	}
 }
 
-// SubscribeBlocks subscribes to notifications of new blocks being connected to the
-// blockchain or blocks being disconnected.
+// SubscribeBlocks creates a subscription for notifications of new blocks being
+// connected to the blockchain or blocks being disconnected.
 func (s *GrpcServer) SubscribeBlocks(req *pb.SubscribeBlocksRequest, stream pb.Bchrpc_SubscribeBlocksServer) error {
 	subscription := s.subscribeEvents()
 	defer subscription.Unsubscribe()
