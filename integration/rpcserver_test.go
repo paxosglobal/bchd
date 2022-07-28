@@ -125,7 +125,9 @@ func TestMain(m *testing.M) {
 	// ensure that non-standard transactions aren't accepted into the
 	// mempool or relayed.
 	bchdCfg := []string{"--rejectnonstd"}
-	primaryHarness, err = rpctest.New(&chaincfg.SimNetParams, nil, bchdCfg)
+	primaryHarness, err = rpctest.New(
+		&chaincfg.SimNetParams, nil, bchdCfg, ""
+	)
 	if err != nil {
 		fmt.Println("unable to create primary harness: ", err)
 		exitCode = 1
