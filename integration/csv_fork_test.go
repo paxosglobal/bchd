@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // This file is ignored during the regular tests due to the following build tag.
+//go:build rpctest
 // +build rpctest
 
 package integration
@@ -116,7 +117,7 @@ func TestBIP0113Activation(t *testing.T) {
 	t.Parallel()
 
 	bchdCfg := []string{"--rejectnonstd"}
-	r, err := rpctest.New(&chaincfg.SimNetParams, nil, bchdCfg)
+	r, err := rpctest.New(&chaincfg.SimNetParams, nil, bchdCfg, "")
 	if err != nil {
 		t.Fatal("unable to create primary harness: ", err)
 	}
@@ -428,7 +429,7 @@ func TestBIP0068AndBIP0112Activation(t *testing.T) {
 	// relative lock times.
 
 	bchdCfg := []string{"--rejectnonstd"}
-	r, err := rpctest.New(&chaincfg.SimNetParams, nil, bchdCfg)
+	r, err := rpctest.New(&chaincfg.SimNetParams, nil, bchdCfg, "")
 	if err != nil {
 		t.Fatal("unable to create primary harness: ", err)
 	}
