@@ -28,7 +28,7 @@ that communicates with your running bchd instance via the API.
 
 ## Requirements
 
-[Go](http://golang.org) 1.12.17 or newer.
+[Go](http://golang.org) 1.16.4 or newer.
 
 ## Install
 
@@ -109,7 +109,8 @@ docker build . -t bchd
 To run the image:
 
 ```
-docker run bchd
+# Use stop-timeout to make sure the container exits cleanly!
+docker run --stop-timeout=1200 bchd
 ```
 
 To run `bchctl` and connect to your `bchd` instance:

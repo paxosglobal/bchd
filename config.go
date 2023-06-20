@@ -64,6 +64,9 @@ const (
 	defaultSigCacheMaxSize         = 100000
 	defaultTxIndex                 = false
 	defaultAddrIndex               = false
+	defaultSlpIndex                = false
+	defaultSlpCacheMaxSize         = 100000
+	defaultSlpGraphSearch          = false
 	defaultUtxoCacheMaxSizeMiB     = 450
 	defaultMinSyncPeerNetworkSpeed = 51200
 	defaultPruneDepth              = 4320
@@ -71,6 +74,7 @@ const (
 	minPruneDepth                  = 288
 	defaultDBCacheSize             = 500
 	defaultDBFlushSecs             = 1800
+	defaultRPCAuthTimeout          = 10
 )
 
 var (
@@ -125,7 +129,7 @@ type config struct {
 	BanThreshold            uint32        `long:"banthreshold" description:"Maximum allowed ban score before disconnecting and banning misbehaving peers."`
 	Whitelists              []string      `long:"whitelist" description:"Add an IP network or IP that will not be banned. (eg. 192.168.1.0/24 or ::1)"`
 	AgentBlacklist          []string      `long:"agentblacklist" description:"A comma separated list of user-agent substrings which will cause bchd to reject any peers whose user-agent contains any of the blacklisted substrings."`
-	AgentWhitelist          []string      `long:"agentwhitelist" description:"A comma separated list of user-agent substrings which will cause bchd to require all peers' user-agents to contain one of the whitelisted substrings. The blacklist is applied before the blacklist, and an empty whitelist will allow all agents that do not fail the blacklist."`
+	AgentWhitelist          []string      `long:"agentwhitelist" description:"A comma separated list of user-agent substrings which will cause bchd to require all peers' user-agents to contain one of the whitelisted substrings. The blacklist is applied before the whitelist, and an empty whitelist will allow all agents that do not fail the blacklist."`
 	RPCUser                 string        `short:"u" long:"rpcuser" description:"Username for RPC connections"`
 	RPCPass                 string        `short:"P" long:"rpcpass" default-mask:"-" description:"Password for RPC connections"`
 	RPCLimitUser            string        `long:"rpclimituser" description:"Username for limited RPC connections"`
@@ -137,6 +141,7 @@ type config struct {
 	RPCMaxWebsockets        int           `long:"rpcmaxwebsockets" description:"Max number of RPC websocket connections"`
 	RPCMaxConcurrentReqs    int           `long:"rpcmaxconcurrentreqs" description:"Max number of concurrent RPC requests that may be processed concurrently"`
 	RPCQuirks               bool          `long:"rpcquirks" description:"Mirror some JSON-RPC quirks of Bitcoin Core -- NOTE: Discouraged unless interoperability issues need to be worked around"`
+	RPCAuthTimeout          uint          `long:"rpcauthtimeout" description:"The number of seconds a connection to the RPC server is allowed to stay open without authenticating. To disable the timeout use 0."`
 	DisableRPC              bool          `long:"norpc" description:"Disable built-in RPC server -- NOTE: The RPC server is disabled by default if no rpcuser/rpcpass or rpclimituser/rpclimitpass is specified"`
 	DisableTLS              bool          `long:"notls" description:"Disable TLS for the RPC server -- NOTE: This is only allowed if the RPC server is bound to localhost"`
 	DisableDNSSeed          bool          `long:"nodnsseed" description:"Disable DNS seeding for peers"`
@@ -150,7 +155,10 @@ type config struct {
 	NoOnion                 bool          `long:"noonion" description:"Disable connecting to tor hidden services"`
 	TorIsolation            bool          `long:"torisolation" description:"Enable Tor stream isolation by randomizing user credentials for each connection."`
 	TestNet3                bool          `long:"testnet" description:"Use the test network"`
+	TestNet4                bool          `long:"testnet4" description:"Use the test 4 network"`
 	RegressionTest          bool          `long:"regtest" description:"Use the regression test network"`
+	RegressionTestAnyHost   bool          `long:"regtestanyhost" description:"In regression test mode, allow connections from any host, not just localhost"`
+	RegressionTestNoReset   bool          `long:"regtestnoreset" description:"In regression test mode, don't reset the network db on node restart"`
 	SimNet                  bool          `long:"simnet" description:"Use the simulation test network"`
 	AddCheckpoints          []string      `long:"addcheckpoint" description:"Add a custom checkpoint.  Format: '<height>:<hash>'"`
 	DisableCheckpoints      bool          `long:"nocheckpoints" description:"Disable built-in checkpoints.  Don't do this unless you know what you're doing."`
@@ -182,6 +190,10 @@ type config struct {
 	DropTxIndex             bool          `long:"droptxindex" description:"Deletes the hash-based transaction index from the database on start up and then exits."`
 	AddrIndex               bool          `long:"addrindex" description:"Maintain a full address-based transaction index which makes the searchrawtransactions RPC available"`
 	DropAddrIndex           bool          `long:"dropaddrindex" description:"Deletes the address-based transaction index from the database on start up and then exits."`
+	SlpIndex                bool          `long:"slpindex" description:"Maintain an index which makes slp transaction validity and token metadata available via various gRPC methods"`
+	SlpCacheMaxSize         uint          `long:"slpcachemaxsize" description:"The maximum number of entries in the slp indexer cache"`
+	DropSlpIndex            bool          `long:"dropslpindex" description:"Deletes the slp index from the database on start up and then exits."`
+	SlpGraphSearch          bool          `long:"slpgraphsearch" description:"Enables gRPC calls related to slp graph search."`
 	RelayNonStd             bool          `long:"relaynonstd" description:"Relay non-standard transactions regardless of the default settings for the active network."`
 	RejectNonStd            bool          `long:"rejectnonstd" description:"Reject non-standard transactions regardless of the default settings for the active network."`
 	Prune                   bool          `long:"prune" description:"Delete historical blocks from the chain. A buffer of blocks will be retained in case of a reorg."`
@@ -193,6 +205,7 @@ type config struct {
 	GrpcAuthToken           string        `long:"grpcauthtoken" description:"An authentication token for the gRPC API to authenticate clients"`
 	DBCacheSize             uint64        `long:"dbcachesize" description:"The maximum size in MiB of the database cache"`
 	DBFlushInterval         uint32        `long:"dbflushinterval" description:"The number of seconds between database flushes"`
+	PrometheusListen        string        `long:"prometheus" description:"Specify an (addr):port to serve prometheus metrics (for example :9000 or my-interface:9000, default disabled)"`
 	lookup                  func(string) ([]net.IP, error)
 	oniondial               func(string, string, time.Duration) (net.Conn, error)
 	dial                    func(string, string, time.Duration) (net.Conn, error)
@@ -461,11 +474,16 @@ func loadConfig() (*config, []string, error) {
 		UtxoCacheMaxSizeMiB:     defaultUtxoCacheMaxSizeMiB,
 		Generate:                defaultGenerate,
 		TxIndex:                 defaultTxIndex,
+		RPCAuthTimeout:          defaultRPCAuthTimeout,
 		AddrIndex:               defaultAddrIndex,
+		SlpIndex:                defaultSlpIndex,
+		SlpCacheMaxSize:         defaultSlpCacheMaxSize,
+		SlpGraphSearch:          defaultSlpGraphSearch,
 		PruneDepth:              defaultPruneDepth,
 		TargetOutboundPeers:     defaultTargetOutboundPeers,
 		DBCacheSize:             defaultDBCacheSize,
 		DBFlushInterval:         defaultDBFlushSecs,
+		PrometheusListen:        "",
 	}
 
 	// Service options which are only added on Windows.
@@ -573,6 +591,10 @@ func loadConfig() (*config, []string, error) {
 		numNets++
 		activeNetParams = &testNet3Params
 	}
+	if cfg.TestNet4 {
+		numNets++
+		activeNetParams = &testNet4Params
+	}
 	if cfg.RegressionTest {
 		numNets++
 		activeNetParams = &regressionNetParams
@@ -610,6 +632,15 @@ func loadConfig() (*config, []string, error) {
 		return nil, nil, err
 	}
 
+	// Indexing doesn't work with a pruned blockchain.
+	if (cfg.TxIndex || cfg.AddrIndex) && cfg.Prune {
+		str := "%s: txindex and addrindex can not be used with a pruned blockchain."
+		err := fmt.Errorf(str, funcName)
+		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, usageMessage)
+		return nil, nil, err
+	}
+
 	// Indexing also doesn't work with fast sync as the indexes will not go
 	// back to genesis.
 	if (cfg.TxIndex || cfg.AddrIndex) && cfg.FastSync {
@@ -623,6 +654,15 @@ func loadConfig() (*config, []string, error) {
 	// Checkpoints must not be disabled in fast sync mode
 	if cfg.FastSync && cfg.DisableCheckpoints {
 		str := "%s: disablecheckpoints can not be used with fast sync mode."
+		err := fmt.Errorf(str, funcName)
+		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, usageMessage)
+		return nil, nil, err
+	}
+
+	// SlpGraphSearch doesn't work without txindex and slpindex
+	if cfg.SlpGraphSearch && (!cfg.TxIndex || !cfg.SlpIndex) {
+		str := "%s: slpgraphsearch can not be used without both txindex and slpindex."
 		err := fmt.Errorf(str, funcName)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
@@ -834,7 +874,7 @@ func loadConfig() (*config, []string, error) {
 		return nil, nil, err
 	}
 
-	// Validate the the minrelaytxfee.
+	// Validate the minrelaytxfee.
 	cfg.minRelayTxFee, err = bchutil.NewAmount(cfg.MinRelayTxFee)
 	if err != nil {
 		str := "%s: invalid minrelaytxfee: %v"
@@ -844,7 +884,7 @@ func loadConfig() (*config, []string, error) {
 		return nil, nil, err
 	}
 
-	// Limit the max orphan count to a sane vlue.
+	// Limit the max orphan count to a sane value.
 	if cfg.MaxOrphanTxs < 0 {
 		str := "%s: The maxorphantx option may not be less than 0 " +
 			"-- parsed [%d]"
@@ -915,6 +955,16 @@ func loadConfig() (*config, []string, error) {
 			"options may not be activated at the same time "+
 			"because the address index relies on the transaction "+
 			"index",
+			funcName)
+		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, usageMessage)
+		return nil, nil, err
+	}
+
+	// --slpindex and --dropslpindex do not mix.
+	if cfg.SlpIndex && cfg.DropSlpIndex {
+		err := fmt.Errorf("%s: the --slpindex and --dropslpindex "+
+			"options may not be activated at the same time",
 			funcName)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)

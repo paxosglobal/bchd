@@ -45,7 +45,9 @@ const (
 		ScriptVerifySchnorrMultisig |
 		ScriptVerifyReverseBytes |
 		ScriptReportSigChecks |
-		ScriptVerifyInputSigChecks
+		ScriptVerifyInputSigChecks |
+		ScriptVerify64BitIntegers |
+		ScriptVerifyNativeIntrospection
 )
 
 // ScriptClass is an enumeration for the list of standard types of script.
@@ -164,6 +166,9 @@ func isNullData(pops []parsedOpcode) bool {
 			isDataOpcode = true
 			scriptLen += len(pop.data)
 			scriptLen += -pop.opcode.length + 1
+		} else if pop.opcode.value < OP_16 {
+			isDataOpcode = true
+			scriptLen++
 		}
 		if !isDataOpcode {
 			return false
@@ -404,7 +409,8 @@ func PayToAddrScript(addr bchutil.Address) ([]byte, error) {
 // followed by the passed data.  An Error with the error code ErrTooMuchNullData
 // will be returned if the length of the passed data exceeds MaxDataCarrierSize.
 func NullDataScript(data []byte) ([]byte, error) {
-	if len(data) > MaxDataCarrierSize {
+	maxDataSize := MaxDataCarrierSize - 3 // subtract size of OP_RETURN PUSHDATA1 <len>
+	if len(data) > maxDataSize {
 		str := fmt.Sprintf("data size %d is larger than max "+
 			"allowed size %d", len(data), MaxDataCarrierSize)
 		return nil, scriptError(ErrTooMuchNullData, str)

@@ -255,6 +255,11 @@ type SyncManager struct {
 	// signal that it has finished the UTXO set download before proceeding
 	// to make the standard getblocks request.
 	fastSyncMode bool
+
+	// regTestSyncAnyHost allows any host when regression test network is
+	// being used.  For example, when running regression test network in
+	// docker containers the host is not a localhost.
+	regTestSyncAnyHost bool
 }
 
 // resetHeaderState sets the headers-first mode state to values appropriate for
@@ -340,10 +345,8 @@ func (sm *SyncManager) startSync() {
 			continue
 		}
 
-		// Remove sync candidate peers that are no longer candidates due
-		// to passing their latest known block.
+		// Don't pick a peer that is behind us.
 		if peer.LastBlock() < best.Height {
-			state.syncCandidate = false
 			continue
 		}
 
@@ -450,7 +453,14 @@ func (sm *SyncManager) isSyncCandidate(peer *peerpkg.Peer) bool {
 	// Typically a peer is not a candidate for sync if it's not a full node,
 	// however regression test is special in that the regression tool is
 	// not a full node and still needs to be considered a sync candidate.
-	if sm.chainParams == &chaincfg.RegressionNetParams {
+	if sm.chainParams != &chaincfg.RegressionNetParams {
+		// The peer is not a candidate for sync if it's not a full
+		// node.
+		nodeServices := peer.Services()
+		return nodeServices&wire.SFNodeNetwork == wire.SFNodeNetwork
+	}
+
+	if !sm.regTestSyncAnyHost {
 		// The peer is not a candidate if it's not coming from localhost
 		// or the hostname can't be determined for some reason.
 		host, _, err := net.SplitHostPort(peer.Addr())
@@ -459,13 +469,6 @@ func (sm *SyncManager) isSyncCandidate(peer *peerpkg.Peer) bool {
 		}
 
 		if host != "127.0.0.1" && host != "localhost" {
-			return false
-		}
-	} else {
-		// The peer is not a candidate for sync if it's not a full
-		// node.
-		nodeServices := peer.Services()
-		if nodeServices&wire.SFNodeNetwork != wire.SFNodeNetwork {
 			return false
 		}
 	}
@@ -562,7 +565,8 @@ func (sm *SyncManager) handleCheckSyncPeer() {
 	sm.updateSyncPeer()
 }
 
-// medianSyncPeerCandidateBlockHeight returns the median block height of sync peer candidates.
+// medianSyncPeerCandidateBlockHeight returns the median block height of sync peer candidates,
+// at or above our block height.
 func (sm *SyncManager) medianSyncPeerCandidateBlockHeight() int32 {
 	heights := []int32{}
 
@@ -571,7 +575,6 @@ func (sm *SyncManager) medianSyncPeerCandidateBlockHeight() int32 {
 			continue
 		}
 
-		// Peer isn't connected, skip.
 		if !peer.Connected() {
 			continue
 		}
@@ -579,6 +582,10 @@ func (sm *SyncManager) medianSyncPeerCandidateBlockHeight() int32 {
 		topBlock := peer.LastBlock()
 		if topBlock < peer.StartingHeight() {
 			topBlock = peer.StartingHeight()
+		}
+
+		if topBlock < sm.topBlock() {
+			continue
 		}
 
 		heights = append(heights, topBlock)
@@ -653,6 +660,11 @@ func (sm *SyncManager) clearRequestedState(state *peerSyncState) {
 
 // updateSyncPeer picks a new peer to sync from.
 func (sm *SyncManager) updateSyncPeer() {
+	// Ignore if we are shutting down.
+	if atomic.LoadInt32(&sm.shutdown) != 0 {
+		return
+	}
+
 	if sm.syncPeer != nil {
 		state, exists := sm.peerStates[sm.syncPeer]
 		if exists {
@@ -1815,6 +1827,7 @@ func New(config *Config) (*SyncManager, error) {
 		feeEstimator:            config.FeeEstimator,
 		minSyncPeerNetworkSpeed: config.MinSyncPeerNetworkSpeed,
 		fastSyncMode:            config.FastSyncMode,
+		regTestSyncAnyHost:      config.RegTestSyncAnyHost,
 	}
 
 	best := sm.chain.BestSnapshot()
