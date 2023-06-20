@@ -12,6 +12,7 @@ import (
 	"errors"
 
 	"github.com/gcash/bchd/blockchain"
+	"github.com/gcash/bchd/chaincfg/chainhash"
 	"github.com/gcash/bchd/database"
 	"github.com/gcash/bchutil"
 )
@@ -66,6 +67,12 @@ type Indexer interface {
 	// this block is also returned so indexers can clean up the prior index
 	// state for this block
 	DisconnectBlock(database.Tx, *bchutil.Block, []blockchain.SpentTxOut) error
+
+	// StartBlock is invoked to get which block the indexer should be
+	// started from.  The first indexed height is after this block, and the
+	// block hash returned here is compared against the first indexed block's
+	// previous block hash.
+	StartBlock() (hash *chainhash.Hash, height int32)
 }
 
 // AssertError identifies an error that indicates an internal code consistency

@@ -6,7 +6,6 @@ package mempool
 
 import (
 	"encoding/hex"
-	"github.com/gcash/bchd/mining"
 	"reflect"
 	"runtime"
 	"sync"
@@ -17,6 +16,7 @@ import (
 	"github.com/gcash/bchd/blockchain"
 	"github.com/gcash/bchd/chaincfg"
 	"github.com/gcash/bchd/chaincfg/chainhash"
+	"github.com/gcash/bchd/mining"
 	"github.com/gcash/bchd/txscript"
 	"github.com/gcash/bchd/wire"
 	"github.com/gcash/bchutil"
