@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/gcash/bchd/bchrpc"
+	"github.com/gcash/bchd/grpcmetrics"
 	"github.com/gorilla/mux"
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
@@ -29,6 +29,7 @@ var prometheusEnabled = false
 func newGrpcServer(netAddrs []net.Addr, rpcCfg *bchrpc.GrpcServerConfig, svr *server) (*bchrpc.GrpcServer, error) {
 	for _, addr := range netAddrs {
 		rpcCfg.NetMgr = svr
+		serverMetrics, _, _ := grpcmetrics.RegisterPrometheusServerMetrics()
 		opts := []grpc.ServerOption{grpc.StreamInterceptor(interceptStreaming), grpc.UnaryInterceptor(interceptUnary)}
 		creds, err := credentials.NewServerTLSFromFile(cfg.RPCCert, cfg.RPCKey)
 		if err != nil {
@@ -71,8 +72,7 @@ func newGrpcServer(netAddrs []net.Addr, rpcCfg *bchrpc.GrpcServerConfig, svr *se
 
 		if len(cfg.PrometheusListen) != 0 {
 			// init Prometheus metrics
-			grpc_prometheus.EnableHandlingTimeHistogram()
-			grpc_prometheus.Register(server)
+			serverMetrics.InitializeMetrics(server)
 
 			router := mux.NewRouter()
 			router.Handle("/metrics", promhttp.Handler())
@@ -111,7 +111,8 @@ func serviceName(method string) string {
 func interceptStreaming(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	// collect prometheus metrics before auth
 	if prometheusEnabled {
-		if err := grpc_prometheus.StreamServerInterceptor(srv, ss, info, handler); err != nil {
+		_, _, streamInterceptor := grpcmetrics.RegisterPrometheusServerMetrics()
+		if err := streamInterceptor(srv, ss, info, handler); err != nil {
 			return err
 		}
 	}
@@ -141,7 +142,8 @@ func interceptStreaming(srv interface{}, ss grpc.ServerStream, info *grpc.Stream
 
 func interceptUnary(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 	if prometheusEnabled {
-		resp, err = grpc_prometheus.UnaryServerInterceptor(ctx, req, info, handler)
+		_, unaryInterceptor, _ := grpcmetrics.RegisterPrometheusServerMetrics()
+		resp, err = unaryInterceptor(ctx, req, info, handler)
 		if err != nil {
 			return resp, err
 		}
