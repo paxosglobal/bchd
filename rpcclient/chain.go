@@ -7,6 +7,7 @@ package rpcclient
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 
@@ -1129,4 +1130,52 @@ func (c *Client) VerifyTxOutProofAsync(proof string) FutureVerifyTxOutProofResul
 // merkle proof
 func (c *Client) VerifyTxOutProof(proof string) ([]string, error) {
 	return c.VerifyTxOutProofAsync(proof).Receive()
+}
+
+// GetBlockCountWithContext returns the number of blocks in the longest block
+// chain. The provided context can be used to cancel the request.
+func (c *Client) GetBlockCountWithContext(ctx context.Context) (int64, error) {
+	cmd := btcjson.NewGetBlockCountCmd()
+	return FutureGetBlockCountResult(c.sendCmdWithContext(ctx, cmd)).Receive()
+}
+
+// GetBlockHashWithContext returns the hash of the block in the best block chain
+// at the given height. The provided context can be used to cancel the request.
+func (c *Client) GetBlockHashWithContext(ctx context.Context, blockHeight int64) (*chainhash.Hash, error) {
+	cmd := btcjson.NewGetBlockHashCmd(blockHeight)
+	return FutureGetBlockHashResult(c.sendCmdWithContext(ctx, cmd)).Receive()
+}
+
+// GetBlockVerboseWithContext returns a data structure from the server with
+// information about a block given its hash. The provided context can be used
+// to cancel the request.
+func (c *Client) GetBlockVerboseWithContext(ctx context.Context, blockHash *chainhash.Hash, verboseTx bool) (*btcjson.GetBlockVerboseResult, error) {
+	hash := ""
+	if blockHash != nil {
+		hash = blockHash.String()
+	}
+	cmd := btcjson.NewGetBlockCmd(hash, btcjson.Verbositylevel(1))
+	result := FutureGetBlockVerboseResult{
+		client:   c,
+		hash:     hash,
+		Response: c.sendCmdWithContext(ctx, cmd),
+	}
+	return result.Receive()
+}
+
+// GetBlockVerboseTxWithContext returns a data structure from the server with
+// information about a block and its transactions given its hash. The provided
+// context can be used to cancel the request.
+func (c *Client) GetBlockVerboseTxWithContext(ctx context.Context, blockHash *chainhash.Hash) (*btcjson.GetBlockVerboseTxResult, error) {
+	hash := ""
+	if blockHash != nil {
+		hash = blockHash.String()
+	}
+	cmd := btcjson.NewGetBlockCmd(hash, btcjson.Verbositylevel(2))
+	result := FutureGetBlockVerboseTxResult{
+		client:   c,
+		hash:     hash,
+		Response: c.sendCmdWithContext(ctx, cmd),
+	}
+	return result.Receive()
 }

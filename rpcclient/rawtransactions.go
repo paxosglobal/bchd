@@ -6,6 +6,7 @@ package rpcclient
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -670,4 +671,48 @@ func (c *Client) DecodeScriptAsync(serializedScript []byte) FutureDecodeScriptRe
 // DecodeScript returns information about a script given its serialized bytes.
 func (c *Client) DecodeScript(serializedScript []byte) (*btcjson.DecodeScriptResult, error) {
 	return c.DecodeScriptAsync(serializedScript).Receive()
+}
+
+// GetRawTransactionVerboseWithContext returns information about a transaction
+// given its hash. The provided context can be used to cancel the request.
+func (c *Client) GetRawTransactionVerboseWithContext(ctx context.Context, txHash *chainhash.Hash) (*btcjson.TxRawResult, error) {
+	hash := ""
+	if txHash != nil {
+		hash = txHash.String()
+	}
+	cmd := btcjson.NewGetRawTransactionCmd(hash, btcjson.Verboselevel(1))
+	return FutureGetRawTransactionVerboseResult(c.sendCmdWithContext(ctx, cmd)).Receive()
+}
+
+// CreateRawTransactionWithContext returns a new transaction spending the
+// provided inputs and sending to the provided addresses. The provided context
+// can be used to cancel the request.
+func (c *Client) CreateRawTransactionWithContext(ctx context.Context, inputs []btcjson.TransactionInput,
+	amounts map[bchutil.Address]bchutil.Amount, lockTime *int64) (*wire.MsgTx, error) {
+
+	convertedAmts := make(map[string]float64, len(amounts))
+	for addr, amount := range amounts {
+		convertedAmts[addr.String()] = amount.ToBCH()
+	}
+	cmd := btcjson.NewCreateRawTransactionCmd(inputs, convertedAmts, lockTime)
+	return FutureCreateRawTransactionResult(c.sendCmdWithContext(ctx, cmd)).Receive()
+}
+
+// SendRawTransactionWithContext submits the encoded transaction to the server
+// which will then relay it to the network. The provided context can be used to
+// cancel the request.
+func (c *Client) SendRawTransactionWithContext(ctx context.Context, tx *wire.MsgTx, allowHighFees bool) (*chainhash.Hash, error) {
+	txHex := ""
+	if tx != nil {
+		// Serialize the transaction and convert to hex string.
+		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
+		if err := tx.Serialize(buf); err != nil {
+			return nil, err
+		}
+		txHex = hex.EncodeToString(buf.Bytes())
+	} else {
+		return nil, errors.New("no transaction data provided")
+	}
+	cmd := btcjson.NewSendRawTransactionCmd(txHex, &allowHighFees)
+	return FutureSendRawTransactionResult(c.sendCmdWithContext(ctx, cmd)).Receive()
 }
