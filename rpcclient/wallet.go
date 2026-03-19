@@ -5,6 +5,7 @@
 package rpcclient
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 
@@ -60,6 +61,17 @@ func (c *Client) GetTransactionAsync(txHash *chainhash.Hash) FutureGetTransactio
 // See GetRawTransaction to return the raw transaction instead.
 func (c *Client) GetTransaction(txHash *chainhash.Hash) (*btcjson.GetTransactionResult, error) {
 	return c.GetTransactionAsync(txHash).Receive()
+}
+
+// GetTransactionWithContext returns detailed information about a wallet
+// transaction. The provided context can be used to cancel the request.
+func (c *Client) GetTransactionWithContext(ctx context.Context, txHash *chainhash.Hash) (*btcjson.GetTransactionResult, error) {
+	hash := ""
+	if txHash != nil {
+		hash = txHash.String()
+	}
+	cmd := btcjson.NewGetTransactionCmd(hash, nil)
+	return FutureGetTransactionResult(c.sendCmdWithContext(ctx, cmd)).Receive()
 }
 
 // FutureListTransactionsResult is a future promise to deliver the result of a

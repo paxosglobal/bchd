@@ -7,6 +7,7 @@ package rpcclient
 import (
 	"bytes"
 	"container/list"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -103,6 +104,7 @@ type jsonRequest struct {
 	cmd            interface{}
 	marshalledJSON []byte
 	responseChan   chan *response
+	ctx            context.Context
 }
 
 // Client represents a Bitcoin RPC client which allows easy access to the
@@ -817,7 +819,11 @@ func (c *Client) sendPost(jReq *jsonRequest) {
 	}
 	url := protocol + "://" + c.config.Host
 	bodyReader := bytes.NewReader(jReq.marshalledJSON)
-	httpReq, err := http.NewRequest("POST", url, bodyReader)
+	ctx := jReq.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bodyReader)
 	if err != nil {
 		jReq.responseChan <- &response{result: nil, err: err}
 		return
@@ -897,6 +903,39 @@ func (c *Client) sendCmd(cmd interface{}) chan *response {
 		cmd:            cmd,
 		marshalledJSON: marshalledJSON,
 		responseChan:   responseChan,
+	}
+	c.sendRequest(jReq)
+
+	return responseChan
+}
+
+// sendCmdWithContext sends the passed command to the associated server and
+// returns a response channel on which the reply will be delivered at some
+// point in the future. The provided context is attached to the underlying
+// HTTP request so that callers can cancel in-flight requests.
+func (c *Client) sendCmdWithContext(ctx context.Context, cmd interface{}) chan *response {
+	// Get the method associated with the command.
+	method, err := btcjson.CmdMethod(cmd)
+	if err != nil {
+		return newFutureError(err)
+	}
+
+	// Marshal the command.
+	id := c.NextID()
+	marshalledJSON, err := btcjson.MarshalCmd("1.0", id, cmd)
+	if err != nil {
+		return newFutureError(err)
+	}
+
+	// Generate the request and send it along with a channel to respond on.
+	responseChan := make(chan *response, 1)
+	jReq := &jsonRequest{
+		id:             id,
+		method:         method,
+		cmd:            cmd,
+		marshalledJSON: marshalledJSON,
+		responseChan:   responseChan,
+		ctx:            ctx,
 	}
 	c.sendRequest(jReq)
 

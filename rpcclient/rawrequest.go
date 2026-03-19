@@ -5,6 +5,7 @@
 package rpcclient
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 
@@ -75,4 +76,61 @@ func (c *Client) RawRequestAsync(method string, params []json.RawMessage) Future
 // handled directly.
 func (c *Client) RawRequest(method string, params []json.RawMessage) (json.RawMessage, error) {
 	return c.RawRequestAsync(method, params).Receive()
+}
+
+// RawRequestAsyncWithContext returns an instance of a type that can be used to
+// get the result of a custom RPC request at some future time by invoking the
+// Receive function on the returned instance. The provided context is attached
+// to the underlying HTTP request for cancellation support.
+//
+// See RawRequestWithContext for the blocking version.
+func (c *Client) RawRequestAsyncWithContext(ctx context.Context, method string, params []json.RawMessage) FutureRawResult {
+	// Method may not be empty.
+	if method == "" {
+		return newFutureError(errors.New("no method"))
+	}
+
+	// Marshal parameters as "[]" instead of "null" when no parameters
+	// are passed.
+	if params == nil {
+		params = []json.RawMessage{}
+	}
+
+	// Create a raw JSON-RPC request using the provided method and params
+	// and marshal it.  This is done rather than using the sendCmd function
+	// since that relies on marshalling registered btcjson commands rather
+	// than custom commands.
+	id := c.NextID()
+	rawRequest := &btcjson.Request{
+		Jsonrpc: "1.0",
+		ID:      id,
+		Method:  method,
+		Params:  params,
+	}
+	marshalledJSON, err := json.Marshal(rawRequest)
+	if err != nil {
+		return newFutureError(err)
+	}
+
+	// Generate the request and send it along with a channel to respond on.
+	responseChan := make(chan *response, 1)
+	jReq := &jsonRequest{
+		id:             id,
+		method:         method,
+		cmd:            nil,
+		marshalledJSON: marshalledJSON,
+		responseChan:   responseChan,
+		ctx:            ctx,
+	}
+	c.sendRequest(jReq)
+
+	return responseChan
+}
+
+// RawRequestWithContext allows the caller to send a raw or custom request to
+// the server with context support for cancellation. This method may be used to
+// send and receive requests and responses for requests that are not handled by
+// this client package.
+func (c *Client) RawRequestWithContext(ctx context.Context, method string, params []json.RawMessage) (json.RawMessage, error) {
+	return c.RawRequestAsyncWithContext(ctx, method, params).Receive()
 }
