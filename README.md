@@ -144,3 +144,4 @@ Josh Ellithorpe (quest@mac.com) - GPG Fingerprint: B6DE 3514 E07E 30BB 5F40  8D7
 ## License
 
 bchd is licensed under the [copyfree](http://copyfree.org) ISC License.
+<!-- hoplites review smoke test -->
